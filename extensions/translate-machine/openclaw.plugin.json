@@ -1,0 +1,60 @@
+{
+  "id": "translate-machine",
+  "name": "TranslateMachine",
+  "description": "使用 Claude CLI 批次翻譯 Markdown 檔案，提供 Web Dashboard 設定與即時進度顯示",
+  "uiHints": {
+    "scriptPath": {
+      "label": "翻譯腳本路徑",
+      "placeholder": "~/.openclaw/workspace/TranslateMachine/translate.py",
+      "help": "translate.py 的絕對路徑"
+    },
+    "defaultSource": {
+      "label": "預設來源目錄",
+      "placeholder": "./docs-en"
+    },
+    "defaultTarget": {
+      "label": "預設目標目錄",
+      "placeholder": "./docs-tw"
+    },
+    "defaultModel": {
+      "label": "預設模型",
+      "placeholder": "haiku"
+    },
+    "defaultTargetLang": {
+      "label": "預設目標語言",
+      "placeholder": "繁體中文，台灣用語習慣"
+    },
+    "defaultParallel": {
+      "label": "預設平行數量"
+    },
+    "defaultRetries": {
+      "label": "預設重試次數"
+    },
+    "defaultDelay": {
+      "label": "預設檔案間延遲（秒）"
+    },
+    "preserveCode": {
+      "label": "程式碼區塊保護"
+    },
+    "maxConcurrentJobs": {
+      "label": "最大同時執行任務數",
+      "advanced": true
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "scriptPath": { "type": "string" },
+      "defaultSource": { "type": "string" },
+      "defaultTarget": { "type": "string" },
+      "defaultModel": { "type": "string" },
+      "defaultTargetLang": { "type": "string" },
+      "defaultParallel": { "type": "integer", "minimum": 1, "maximum": 10 },
+      "defaultRetries": { "type": "integer", "minimum": 0, "maximum": 10 },
+      "defaultDelay": { "type": "integer", "minimum": 0 },
+      "preserveCode": { "type": "boolean" },
+      "maxConcurrentJobs": { "type": "integer", "minimum": 1, "maximum": 5 }
+    }
+  }
+}

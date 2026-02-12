@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TranslateMachine Dashboard</title>
+  <style>
+    :root {
+      --bg: #0f1923; --card: #1a2634; --border: #2a3a4a;
+      --text: #e0e6ed; --muted: #8899aa; --accent: #4fc3f7;
+      --ok: #66bb6a; --fail: #ef5350; --warn: #ffa726;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 20px; max-width: 960px; margin: 0 auto; }
+    h1 { font-size: 1.4rem; margin-bottom: 20px; color: var(--accent); }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .card h2 { font-size: 1rem; margin-bottom: 12px; color: var(--accent); }
+    .form-row { display: flex; gap: 12px; margin-bottom: 10px; }
+    .form-row > * { flex: 1; }
+    .form-group { margin-bottom: 10px; }
+    .form-group label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 3px; }
+    .form-group input, .form-group select {
+      width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 4px;
+      background: var(--bg); color: var(--text); font-size: 0.85rem;
+    }
+    .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--accent); }
+    button { padding: 7px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 500; }
+    .btn-primary { background: var(--accent); color: var(--bg); }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-danger { background: var(--fail); color: #fff; }
+    .btn-secondary { background: var(--border); color: var(--text); }
+    .btn-group { display: flex; gap: 8px; margin-top: 12px; }
+    .progress-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin: 8px 0; }
+    .progress-fill { height: 100%; background: var(--accent); transition: width 0.3s; }
+    .progress-text { font-size: 0.8rem; color: var(--muted); }
+    .log-area {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+      padding: 10px; font-family: "Cascadia Code", "Fira Code", monospace; font-size: 0.75rem;
+      max-height: 300px; overflow-y: auto; white-space: pre-wrap; color: var(--muted);
+      line-height: 1.5;
+    }
+    .tabs { display: flex; gap: 2px; margin-bottom: 8px; }
+    .tab { padding: 5px 12px; background: var(--bg); border: 1px solid var(--border); border-bottom: none;
+      border-radius: 4px 4px 0 0; cursor: pointer; font-size: 0.8rem; color: var(--muted); }
+    .tab.active { background: var(--card); color: var(--accent); border-color: var(--accent); }
+    .file-list { max-height: 200px; overflow-y: auto; }
+    .file-item { padding: 3px 8px; font-size: 0.8rem; border-bottom: 1px solid var(--border); }
+    .file-item.pending { color: var(--warn); }
+    .file-item.done { color: var(--ok); }
+    .status-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; font-weight: 600; }
+    .status-running { background: rgba(79,195,247,0.2); color: var(--accent); }
+    .status-completed { background: rgba(102,187,106,0.2); color: var(--ok); }
+    .status-failed { background: rgba(239,83,80,0.2); color: var(--fail); }
+    .status-cancelled { background: rgba(255,167,38,0.2); color: var(--warn); }
+    .hidden { display: none; }
+    .conn-status { font-size: 0.75rem; padding: 3px 8px; border-radius: 10px; }
+    .conn-ok { background: rgba(102,187,106,0.2); color: var(--ok); }
+    .conn-fail { background: rgba(239,83,80,0.2); color: var(--fail); }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .job-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>TranslateMachine</h1>
+    <span class="conn-status conn-fail" id="conn-status">未連線</span>
+  </div>
+
+  <!-- 設定面板 -->
+  <div class="card">
+    <h2>翻譯設定</h2>
+    <div class="form-row">
+      <div class="form-group">
+        <label>來源路徑</label>
+        <input type="text" id="source" placeholder="./docs-en">
+      </div>
+      <div class="form-group">
+        <label>目標路徑</label>
+        <input type="text" id="target" placeholder="./docs-tw">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>模型</label>
+        <select id="model">
+          <option value="haiku">haiku（快速）</option>
+          <option value="sonnet">sonnet（平衡）</option>
+          <option value="opus">opus（最強）</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>目標語言</label>
+        <input type="text" id="targetLang" placeholder="繁體中文，台灣用語習慣" value="繁體中文，台灣用語習慣">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>來源語言（選填）</label>
+        <input type="text" id="sourceLang" placeholder="自動偵測">
+      </div>
+      <div class="form-group">
+        <label>平行數量</label>
+        <input type="number" id="parallel" value="1" min="1" max="10">
+      </div>
+      <div class="form-group">
+        <label>最大檔案數</label>
+        <input type="number" id="maxFiles" value="0" min="0" placeholder="0 = 不限">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>檔案模式</label>
+        <input type="text" id="filePattern" value="*.md">
+      </div>
+      <div class="form-group">
+        <label>重試次數</label>
+        <input type="number" id="retries" value="2" min="0" max="10">
+      </div>
+      <div class="form-group">
+        <label>延遲（秒）</label>
+        <input type="number" id="delay" value="3" min="0">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>對照表路徑（選填）</label>
+        <input type="text" id="glossary" placeholder="預設: <target>/glossary.md">
+      </div>
+      <div class="form-group">
+        <label>移除檔名後綴（選填）</label>
+        <input type="text" id="trimSuffix" placeholder="例如 _原文">
+      </div>
+      <div class="form-group">
+        <label>附加檔名後綴（選填）</label>
+        <input type="text" id="addSuffix" placeholder="例如 _譯文">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group" style="flex:0 0 auto;">
+        <label>&nbsp;</label>
+        <label style="font-size:0.85rem;color:var(--text);cursor:pointer;">
+          <input type="checkbox" id="preserveCode" checked> 程式碼區塊保護
+        </label>
+      </div>
+    </div>
+    <div class="btn-group">
+      <button class="btn-primary" onclick="startJob()">開始翻譯</button>
+      <button class="btn-secondary" onclick="startDryRun()">預覽</button>
+      <button class="btn-secondary" onclick="retryFailed()">重試失敗</button>
+      <button class="btn-secondary" onclick="refreshFiles()">重新整理檔案</button>
+    </div>
+  </div>
+
+  <!-- 進度面板 -->
+  <div class="card hidden" id="progress-panel">
+    <h2>翻譯進度 <span class="status-badge status-running" id="job-status">執行中</span></h2>
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width: 0%"></div></div>
+    <div class="progress-text" id="progress-text">準備中...</div>
+    <div class="btn-group">
+      <button class="btn-danger" onclick="cancelJob()">取消</button>
+    </div>
+  </div>
+
+  <!-- 檔案列表 -->
+  <div class="card" id="files-panel">
+    <h2>檔案狀態</h2>
+    <div class="form-row">
+      <div>
+        <label style="font-size: 0.8rem; color: var(--muted);">來源 (<span id="source-count">0</span>)</label>
+        <div class="file-list" id="source-files"></div>
+      </div>
+      <div>
+        <label style="font-size: 0.8rem; color: var(--muted);">待翻譯 (<span id="pending-count">0</span>)</label>
+        <div class="file-list" id="pending-files"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 紀錄面板 -->
+  <div class="card">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('log')">翻譯紀錄</div>
+      <div class="tab" onclick="switchTab('glossary')">對照表</div>
+      <div class="tab" onclick="switchTab('terms')">新詞</div>
+      <div class="tab" onclick="switchTab('failed')">失敗清單</div>
+      <div class="tab" onclick="switchTab('output')">任務輸出</div>
+    </div>
+    <div class="log-area" id="log-area">等待中...</div>
+  </div>
+
+  <!-- 任務歷史 -->
+  <div class="card">
+    <h2>任務歷史</h2>
+    <div id="job-history"></div>
+  </div>
+
+<script>
+// ── 狀態 ──────────────────────────────────────────
+let ws = null;
+let reqId = 0;
+const pending = new Map();
+let currentJobId = null;
+let pollTimer = null;
+let currentTab = "log";
+
+// ── WebSocket 連線 ────────────────────────────────
+function connect() {
+  const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+  ws = new WebSocket(protocol + "//" + location.host);
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({
+      type: "connect",
+      device: { id: "translate-dashboard-" + Date.now(), label: "TranslateMachine Dashboard" }
+    }));
+    setConnStatus(true);
+    refreshJobs();
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.type === "res" && pending.has(msg.id)) {
+        const { resolve } = pending.get(msg.id);
+        pending.delete(msg.id);
+        resolve(msg);
+      }
+    } catch (e) { /* 忽略 */ }
+  };
+
+  ws.onclose = () => {
+    setConnStatus(false);
+    setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => {
+    setConnStatus(false);
+  };
+}
+
+function setConnStatus(ok) {
+  const el = document.getElementById("conn-status");
+  el.textContent = ok ? "已連線" : "未連線";
+  el.className = "conn-status " + (ok ? "conn-ok" : "conn-fail");
+}
+
+function invoke(method, params) {
+  return new Promise((resolve, reject) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      reject(new Error("未連線")); return;
+    }
+    const id = "req-" + (++reqId);
+    pending.set(id, { resolve, reject });
+    ws.send(JSON.stringify({ type: "req", id, method, params }));
+    setTimeout(() => {
+      if (pending.has(id)) { pending.delete(id); reject(new Error("逾時")); }
+    }, 15000);
+  });
+}
+
+// ── 業務邏輯 ──────────────────────────────────────
+async function startJob() {
+  const source = v("source"), target = v("target");
+  if (!source || !target) { alert("請填寫來源和目標路徑"); return; }
+  try {
+    const res = await invoke("translate.start", {
+      source, target,
+      model: v("model"), targetLang: v("targetLang"), sourceLang: v("sourceLang") || undefined,
+      parallel: n("parallel"), maxFiles: n("maxFiles") || undefined,
+      filePattern: v("filePattern"), retries: n("retries"), delay: n("delay"),
+      glossary: v("glossary") || undefined,
+      trimSuffix: v("trimSuffix") || undefined,
+      addSuffix: v("addSuffix") || undefined,
+      preserveCode: document.getElementById("preserveCode").checked,
+    });
+    if (res.ok !== false && res.payload?.jobId) {
+      currentJobId = res.payload.jobId;
+      showProgress();
+      startPolling();
+      appendLog("任務啟動: " + currentJobId);
+    } else {
+      alert("啟動失敗: " + (res.payload?.error || "未知錯誤"));
+    }
+  } catch (e) { alert("錯誤: " + e.message); }
+}
+
+async function startDryRun() {
+  const source = v("source"), target = v("target");
+  if (!source || !target) { alert("請填寫來源和目標路徑"); return; }
+  try {
+    const res = await invoke("translate.start", {
+      source, target, dryRun: true, filePattern: v("filePattern"),
+    });
+    if (res.ok !== false && res.payload?.jobId) {
+      appendLog("預覽任務啟動: " + res.payload.jobId);
+      currentJobId = res.payload.jobId;
+      startPolling();
+    }
+  } catch (e) { alert("錯誤: " + e.message); }
+}
+
+async function retryFailed() {
+  const source = v("source"), target = v("target");
+  if (!source || !target) { alert("請填寫來源和目標路徑"); return; }
+  try {
+    const res = await invoke("translate.start", {
+      source, target, retryFailed: true,
+      model: v("model"), parallel: n("parallel"),
+      glossary: v("glossary") || undefined,
+      trimSuffix: v("trimSuffix") || undefined,
+      addSuffix: v("addSuffix") || undefined,
+      preserveCode: document.getElementById("preserveCode").checked,
+    });
+    if (res.ok !== false && res.payload?.jobId) {
+      currentJobId = res.payload.jobId;
+      showProgress();
+      startPolling();
+      appendLog("重試任務啟動: " + currentJobId);
+    } else {
+      alert("啟動失敗: " + (res.payload?.error || "未知錯誤"));
+    }
+  } catch (e) { alert("錯誤: " + e.message); }
+}
+
+async function cancelJob() {
+  if (!currentJobId) return;
+  try {
+    await invoke("translate.cancel", { jobId: currentJobId });
+    appendLog("任務已取消");
+    stopPolling();
+    refreshJobs();
+  } catch (e) { appendLog("取消失敗: " + e.message); }
+}
+
+async function refreshFiles() {
+  const source = v("source"), target = v("target");
+  if (!source || !target) return;
+  try {
+    const res = await invoke("translate.files", { source, target, filePattern: v("filePattern") });
+    if (res.ok !== false && res.payload) {
+      const p = res.payload;
+      document.getElementById("source-count").textContent = (p.source || []).length;
+      document.getElementById("pending-count").textContent = (p.pending || []).length;
+      const pendingSet = new Set(p.pending || []);
+      document.getElementById("source-files").innerHTML = (p.source || [])
+        .map(f => '<div class="file-item ' + (pendingSet.has(f) ? 'pending' : 'done') + '">' + esc(f) + '</div>')
+        .join("");
+      document.getElementById("pending-files").innerHTML = (p.pending || [])
+        .map(f => '<div class="file-item pending">' + esc(f) + '</div>')
+        .join("");
+    }
+  } catch (e) { /* 忽略 */ }
+}
+
+async function refreshLogs() {
+  const target = v("target");
+  if (!target) return;
+  try {
+    const res = await invoke("translate.logs", { target });
+    if (res.ok !== false && res.payload) {
+      const logs = res.payload;
+      const area = document.getElementById("log-area");
+      switch (currentTab) {
+        case "log": area.textContent = logs.translateLog || "（空）"; break;
+        case "glossary": area.textContent = logs.glossary || "（空）"; break;
+        case "terms": area.textContent = logs.newTerms || "（空）"; break;
+        case "failed": area.textContent = logs.failedFiles || "（無失敗檔案）"; break;
+      }
+      area.scrollTop = area.scrollHeight;
+    }
+  } catch (e) { /* 忽略 */ }
+}
+
+async function refreshJobs() {
+  try {
+    const res = await invoke("translate.list", {});
+    if (res.ok !== false && res.payload?.jobs) {
+      const container = document.getElementById("job-history");
+      const jobs = res.payload.jobs;
+      if (jobs.length === 0) {
+        container.innerHTML = '<div style="font-size:0.8rem;color:var(--muted)">尚無任務</div>';
+        return;
+      }
+      container.innerHTML = jobs.map(j => {
+        const time = new Date(j.startedAt).toLocaleString("zh-TW");
+        const statusCls = "status-" + j.status;
+        const prog = j.progress || {};
+        return '<div class="job-row">' +
+          '<span>' + esc(j.id) + '</span>' +
+          '<span>' + esc(j.source) + ' &rarr; ' + esc(j.target) + '</span>' +
+          '<span class="status-badge ' + statusCls + '">' + j.status + '</span>' +
+          '<span style="color:var(--muted)">' + (prog.completed || 0) + '/' + (prog.total || 0) + '</span>' +
+          '<span style="color:var(--muted);font-size:0.75rem">' + time + '</span>' +
+          '</div>';
+      }).join("");
+    }
+  } catch (e) { /* 忽略 */ }
+}
+
+// ── 輪詢 ──────────────────────────────────────────
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(async () => {
+    if (!currentJobId) { stopPolling(); return; }
+    try {
+      const res = await invoke("translate.status", { jobId: currentJobId });
+      if (res.ok !== false && res.payload?.found) {
+        const job = res.payload.job;
+        const prog = job.progress || {};
+        const pct = prog.total > 0 ? Math.round((prog.completed / prog.total) * 100) : 0;
+        document.getElementById("progress-fill").style.width = pct + "%";
+        document.getElementById("progress-text").textContent =
+          prog.completed + "/" + prog.total + " (" + pct + "%) — " + (prog.currentFile || "");
+
+        const badge = document.getElementById("job-status");
+        badge.textContent = job.status === "running" ? "執行中" : job.status === "completed" ? "完成" : job.status === "failed" ? "失敗" : "已取消";
+        badge.className = "status-badge status-" + job.status;
+
+        if (job.status !== "running") {
+          appendLog("任務結束: " + job.status + " (成功: " + (prog.completed - (prog.failed || 0)) + ", 失敗: " + (prog.failed || 0) + ")");
+          stopPolling();
+          refreshFiles();
+          refreshLogs();
+          refreshJobs();
+        }
+      }
+
+      // 更新任務輸出 tab
+      if (currentTab === "output") {
+        const outRes = await invoke("translate.output", { jobId: currentJobId, offset: 0 });
+        if (outRes.ok !== false && outRes.payload?.lines) {
+          document.getElementById("log-area").textContent = outRes.payload.lines.join("\n");
+        }
+      }
+    } catch (e) { /* 忽略輪詢錯誤 */ }
+  }, 2000);
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+function showProgress() {
+  document.getElementById("progress-panel").classList.remove("hidden");
+  document.getElementById("progress-fill").style.width = "0%";
+  document.getElementById("progress-text").textContent = "準備中...";
+  const badge = document.getElementById("job-status");
+  badge.textContent = "執行中";
+  badge.className = "status-badge status-running";
+}
+
+// ── 紀錄 Tab ──────────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll(".tab").forEach(el => el.classList.remove("active"));
+  event.target.classList.add("active");
+  if (tab === "output" && currentJobId) {
+    invoke("translate.output", { jobId: currentJobId, offset: 0 }).then(res => {
+      if (res.ok !== false && res.payload?.lines) {
+        document.getElementById("log-area").textContent = res.payload.lines.join("\n");
+      }
+    }).catch(() => {});
+  } else {
+    refreshLogs();
+  }
+}
+
+// ── 工具 ──────────────────────────────────────────
+function v(id) { return document.getElementById(id).value.trim(); }
+function n(id) { return parseInt(document.getElementById(id).value) || 0; }
+function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+function appendLog(msg) {
+  const area = document.getElementById("log-area");
+  const time = new Date().toLocaleTimeString("zh-TW");
+  area.textContent += "[" + time + "] " + msg + "\n";
+  area.scrollTop = area.scrollHeight;
+}
+
+// ── 啟動 ──────────────────────────────────────────
+connect();
+</script>
+</body>
+</html>
