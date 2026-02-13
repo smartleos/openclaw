@@ -207,7 +207,9 @@ const translatePlugin = {
             return;
           }
           const filePattern = typeof params?.filePattern === "string" ? params.filePattern : "*.md";
-          const result = listTranslationFiles(sourceDir, targetDir, filePattern);
+          const trimSuffix = typeof params?.trimSuffix === "string" ? params.trimSuffix : undefined;
+          const addSuffix = typeof params?.addSuffix === "string" ? params.addSuffix : undefined;
+          const result = listTranslationFiles(sourceDir, targetDir, filePattern, trimSuffix, addSuffix);
           respond(true, result);
         } catch (err) {
           sendError(respond, err);
@@ -225,7 +227,8 @@ const translatePlugin = {
             respond(false, { error: "target 為必填" });
             return;
           }
-          const logs = readTranslationLogs(targetDir);
+          const glossaryPath = typeof params?.glossary === "string" ? params.glossary.trim() : undefined;
+          const logs = readTranslationLogs(targetDir, glossaryPath || undefined);
           respond(true, logs);
         } catch (err) {
           sendError(respond, err);
@@ -234,6 +237,7 @@ const translatePlugin = {
     );
 
     // ── Dashboard HTTP 路由 ─────────────────────────────────
+    const gatewayToken = api.config?.gateway?.auth?.token ?? "";
     api.registerHttpRoute({
       path: "/translate-machine",
       handler: async (_req, res) => {
@@ -243,7 +247,14 @@ const translatePlugin = {
           res.end("Dashboard HTML not found");
           return;
         }
-        const html = fs.readFileSync(htmlPath, "utf-8");
+        let html = fs.readFileSync(htmlPath, "utf-8");
+        // 注入 gateway auth token 供 WebSocket 握手使用
+        if (gatewayToken) {
+          html = html.replace(
+            "<!--GATEWAY_TOKEN-->",
+            `<script>window.__GATEWAY_TOKEN__=${JSON.stringify(gatewayToken)};</script>`,
+          );
+        }
         res.setHeader("Content-Type", "text/html; charset=utf-8");
         res.end(html);
       },

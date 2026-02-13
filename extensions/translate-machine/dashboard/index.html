@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TranslateMachine Dashboard</title>
+  <!--GATEWAY_TOKEN-->
   <style>
     :root {
       --bg: #0f1923; --card: #1a2634; --border: #2a3a4a;
@@ -72,11 +73,11 @@
     <div class="form-row">
       <div class="form-group">
         <label>來源路徑</label>
-        <input type="text" id="source" placeholder="./docs-en">
+        <input type="text" id="source" value="/home/clawuser/.openclaw/workspace/obsidian-vault/卡片筆記盒/輕小說翻譯/限界超越的天賦/原文/" placeholder="./docs-en">
       </div>
       <div class="form-group">
         <label>目標路徑</label>
-        <input type="text" id="target" placeholder="./docs-tw">
+        <input type="text" id="target" value="/home/clawuser/.openclaw/workspace/obsidian-vault/卡片筆記盒/輕小說翻譯/限界超越的天賦/譯文/" placeholder="./docs-tw">
       </div>
     </div>
     <div class="form-row">
@@ -96,7 +97,7 @@
     <div class="form-row">
       <div class="form-group">
         <label>來源語言（選填）</label>
-        <input type="text" id="sourceLang" placeholder="自動偵測">
+        <input type="text" id="sourceLang" value="日文" placeholder="自動偵測">
       </div>
       <div class="form-group">
         <label>平行數量</label>
@@ -124,11 +125,11 @@
     <div class="form-row">
       <div class="form-group">
         <label>對照表路徑（選填）</label>
-        <input type="text" id="glossary" placeholder="預設: <target>/glossary.md">
+        <input type="text" id="glossary" value="/home/clawuser/.openclaw/workspace/obsidian-vault/卡片筆記盒/輕小說翻譯/限界超越的天賦/譯文/專有名詞對照表.md" placeholder="預設: <target>/glossary.md">
       </div>
       <div class="form-group">
         <label>移除檔名後綴（選填）</label>
-        <input type="text" id="trimSuffix" placeholder="例如 _原文">
+        <input type="text" id="trimSuffix" value="_原文" placeholder="例如 _原文">
       </div>
       <div class="form-group">
         <label>附加檔名後綴（選填）</label>
@@ -204,22 +205,57 @@ let pollTimer = null;
 let currentTab = "log";
 
 // ── WebSocket 連線 ────────────────────────────────
+// Gateway auth token：由 Plugin HTTP handler 注入，或從 URL fallback
+const wsToken = window.__GATEWAY_TOKEN__ || new URLSearchParams(location.search).get("token") || "";
+
 function connect() {
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
   ws = new WebSocket(protocol + "//" + location.host);
 
   ws.onopen = () => {
-    ws.send(JSON.stringify({
-      type: "connect",
-      device: { id: "translate-dashboard-" + Date.now(), label: "TranslateMachine Dashboard" }
-    }));
-    setConnStatus(true);
-    refreshJobs();
+    // Gateway 會先發送 connect.challenge，等收到後再送 connect
   };
 
   ws.onmessage = (event) => {
     try {
       const msg = JSON.parse(event.data);
+
+      // 處理 connect.challenge → 發送握手
+      if (msg.type === "event" && msg.event === "connect.challenge") {
+        const handshakeId = "req-" + (++reqId);
+        pending.set(handshakeId, {
+          resolve: (res) => {
+            if (res.ok) {
+              setConnStatus(true);
+              refreshJobs();
+            } else {
+              console.error("握手失敗:", res.error);
+              setConnStatus(false);
+            }
+          },
+          reject: () => setConnStatus(false),
+        });
+        ws.send(JSON.stringify({
+          type: "req",
+          id: handshakeId,
+          method: "connect",
+          params: {
+            minProtocol: 1,
+            maxProtocol: 99,
+            client: {
+              id: "gateway-client",
+              displayName: "TranslateMachine Dashboard",
+              version: "1.0.0",
+              platform: "web",
+              mode: "backend",
+            },
+            auth: wsToken ? { token: wsToken } : undefined,
+          },
+        }));
+        return;
+      }
+
+      // 處理 RPC 回應
       if (msg.type === "res" && pending.has(msg.id)) {
         const { resolve } = pending.get(msg.id);
         pending.delete(msg.id);
@@ -336,7 +372,7 @@ async function refreshFiles() {
   const source = v("source"), target = v("target");
   if (!source || !target) return;
   try {
-    const res = await invoke("translate.files", { source, target, filePattern: v("filePattern") });
+    const res = await invoke("translate.files", { source, target, filePattern: v("filePattern"), trimSuffix: v("trimSuffix") || undefined, addSuffix: v("addSuffix") || undefined });
     if (res.ok !== false && res.payload) {
       const p = res.payload;
       document.getElementById("source-count").textContent = (p.source || []).length;
@@ -356,7 +392,7 @@ async function refreshLogs() {
   const target = v("target");
   if (!target) return;
   try {
-    const res = await invoke("translate.logs", { target });
+    const res = await invoke("translate.logs", { target, glossary: v("glossary") || undefined });
     if (res.ok !== false && res.payload) {
       const logs = res.payload;
       const area = document.getElementById("log-area");

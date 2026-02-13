@@ -11,6 +11,8 @@ export function listTranslationFiles(
   sourceDir: string,
   targetDir: string,
   filePattern = "*.md",
+  trimSuffix?: string,
+  addSuffix?: string,
 ): FileListResult {
   const result: FileListResult = { source: [], target: [], pending: [] };
 
@@ -41,8 +43,20 @@ export function listTranslationFiles(
     result.target.sort();
   }
 
+  // 比對時考慮 trimSuffix / addSuffix：來源檔名經轉換後應與目標檔名匹配
   const targetSet = new Set(result.target);
-  result.pending = result.source.filter((name) => !targetSet.has(name));
+  result.pending = result.source.filter((name) => {
+    const nameExt = path.extname(name);
+    let stem = path.basename(name, nameExt);
+    if (trimSuffix && stem.endsWith(trimSuffix)) {
+      stem = stem.slice(0, -trimSuffix.length);
+    }
+    if (addSuffix) {
+      stem = stem + addSuffix;
+    }
+    const expectedTarget = stem + nameExt;
+    return !targetSet.has(expectedTarget);
+  });
 
   return result;
 }
@@ -54,7 +68,7 @@ export type LogContents = {
   failedFiles: string;
 };
 
-export function readTranslationLogs(targetDir: string): LogContents {
+export function readTranslationLogs(targetDir: string, glossaryPath?: string): LogContents {
   const readFile = (name: string) => {
     const filePath = path.join(targetDir, name);
     if (fs.existsSync(filePath)) {
@@ -63,9 +77,19 @@ export function readTranslationLogs(targetDir: string): LogContents {
     return "";
   };
 
+  const readAbsOrRel = (absPath: string | undefined, defaultName: string) => {
+    if (absPath) {
+      const resolved = path.isAbsolute(absPath) ? absPath : path.join(targetDir, absPath);
+      if (fs.existsSync(resolved)) {
+        return fs.readFileSync(resolved, "utf-8");
+      }
+    }
+    return readFile(defaultName);
+  };
+
   return {
     translateLog: readFile("translate-log.txt"),
-    glossary: readFile("glossary.md"),
+    glossary: readAbsOrRel(glossaryPath, "glossary.md"),
     newTerms: readFile("new-terms.txt"),
     failedFiles: readFile("failed-files.txt"),
   };
